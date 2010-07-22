@@ -17,12 +17,12 @@ end
 
 # Version check
 module Chargify
-  MIN_VERSION = '2.3.4'
+  ARES_VERSIONS = ['2.3.4', '2.3.5']
 end
 require 'active_resource/version'
-unless ActiveResource::VERSION::STRING >= Chargify::MIN_VERSION
+unless Chargify::ARES_VERSIONS.include?(ActiveResource::VERSION::STRING)
   abort <<-ERROR
-    ActiveResource version #{Chargify::MIN_VERSION} or greater is required.
+    ActiveResource version #{Chargify::ARES_VERSIONS.join(' or ')} is required.
   ERROR
 end
 
@@ -60,10 +60,14 @@ module Chargify
       
       if site.blank?
         Base.site                     = "https://#{subdomain}.chargify.com"
-        Subscription::Component.site  = "https://#{subdomain}.chargify.com/subscriptions/:subscription_id"
+        Subscription::Component.site = 
+          Subscription::Migration.site = 
+          "https://#{subdomain}.chargify.com/subscriptions/:subscription_id"
       else
         Base.site                     = site
-        Subscription::Component.site  = site + "/subscriptions/:subscription_id"
+        Subscription::Component.site = 
+          Subscription::Migration.site =
+          site + "/subscriptions/:subscription_id"
       end
     end
   end
@@ -106,7 +110,11 @@ module Chargify
     end
     
     def component(id)
-      Component.find(id, :params => {:subscription_id => self.id})
+      begin
+        return Component.find(id, :params => {:subscription_id => self.id})
+      rescue  ActiveResource::ResourceNotFound
+        return nil
+      end
     end
     
     def components(params = {})
@@ -121,16 +129,16 @@ module Chargify
       post :charges, :charge => attrs
     end
     
-    def transactions()
-      Transaction.find(:all, :params =>{:subscription_id => self.id})
-    end
-    
     class Component < Base
       # All Subscription Components are considered already existing records, but the id isn't used
       def id
         self.component_id
       end
     end
+    
+    class Migration < Base
+    end
+    
   end
 
   class Product < Base
@@ -140,7 +148,26 @@ module Chargify
   end
   
   class ProductFamily < Base
+    
+    
+    def coupons
+      Coupon.find(:all , :params => {:product_family_id => self.id})
+    end
+    
+    def coupon (coupon_id)
+      begin
+        return Coupon.find(coupon_id , :params => {:product_family_id => self.id})
+      rescue  ActiveResource::ResourceNotFound
+        return nil
+      end
+    end
+    
+    
+    class Coupon < Base
+    end 
   end
+    
+   
     
   class Usage < Base
     def subscription_id=(i)
@@ -153,8 +180,4 @@ module Chargify
   
   class Component < Base
   end
-  
-  class Transaction < Base
-  end
-  
 end
